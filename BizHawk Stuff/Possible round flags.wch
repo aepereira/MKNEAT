@@ -1,0 +1,7 @@
+SystemID GEN
+AB26	w	u	1	68K RAM	RoundFlags_0
+AB2A	w	u	1	68K RAM	RoundFlags_1
+AB30	w	u	1	68K RAM	RoundFlags_2
+AB3E	w	u	1	68K RAM	GameOver/Continue control
+CAB8	w	u	1	68K RAM	P1_Health
+

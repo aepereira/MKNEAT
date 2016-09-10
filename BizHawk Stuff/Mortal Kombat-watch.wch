@@ -1,0 +1,19 @@
+SystemID GEN
+AC7E	w	u	1	68K RAM	Timer
+AF36	w	u	1	68K RAM	Possibly related to round stage
+CAB8	w	u	1	68K RAM	P1 Health
+CBB8	w	u	1	68K RAM	P2 Health
+CB4A	w	u	1	68K RAM	P1 X
+CC4A	w	u	1	68K RAM	P2 X
+CAFE	w	u	1	68K RAM	P1 Move/Attack Indicator
+CAFA	w	u	1	68K RAM	P1 Move/Attack 
+CBFE	w	u	1	68K RAM	P2 Move/Attack Indicator
+CBFA	w	u	1	68K RAM	P2 Move/Attack
+AB26	w	u	1	68K RAM	RoundFlag_0
+AB2A	w	u	1	68K RAM	RoundFlag_1
+AB30	w	u	1	68K RAM	RoundFlag_2
+AB3E	w	u	1	68K RAM	Continue/GameOver Control
+CB4E	w	u	1	68K RAM	P1 Y
+CC4E	w	u	1	68K RAM	P2 Y
+B586	w	u	1	68K RAM	Continue timer?
+

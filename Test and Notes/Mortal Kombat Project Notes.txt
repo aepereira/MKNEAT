@@ -1,0 +1,315 @@
+////////////////////////////////////////////////
+Genetic Neural Net for Mortal Kombat (World) 
+Sega Genesis
+
+Arnaldo E. Pereira
+
+
+Implementation of (NEAT/rtNEAT) algorithm in
+Lua for genetic neural network playing 
+Mortal Kombat (World) for the Sega Genesis
+
+(credit for MarI/O)
+
+Emulator: BizHawk
+Tools used: 
+Ram Search, Ram Watch, Trace Logger, Hex Editor 
+////////////////////////////////////////////////
+
+
+
+-----------------------------------
+            Goals
+-----------------------------------
+1. NEAT implementation over one match over and over.
+
+2. rtNEAT?
+
+3. Implement feedback: I.e., use a tensor of the RoundState for the last 10, 20 or whatever periods. (Note: ome combos require 5 moves in a row...and some actions might take many frames. I have to figure out how to define the period.) Write a short Lua script to figure this out?
+
+RoundState = [RoundState_0, RoundState_1, RoundState_2, ... , RoundState_n-1], where each 
+RoundState_i = [rt_RoundFitness ???, RawTime, P1_Health, P2_Health, P1_X, P2_X, X_Dist, 		P1_Moves, P2_Moves, AtLeftEdge, AtRightEdge, Outputs]. 
+
+Check how this would work with the NEAT and/or rtNEAT algorithm. 
+
+READ about how to manipulate lists in Lua. Is there some clean way to do FILO with lists in Lua, pushing the nth element out and shifting the indices by 1, so the previous RoundState is at RoundState_0 and the RoundState from n periods ago is at RoundState_n-1? Can this be done in Lua without having to worry about buffer overflow? (Shows how little I know about Lua.)
+
+4. Implementation that can fight the tournament, with fitness equal to sum of round fitnesses (weighted higher the later in the tournament it gets) at Game Over or Victory.
+
+5. References: NEAT, rtNEAT papers; MarI/O
+
+
+------------------------------------
+   Variables and memory locations
+------------------------------------
+
+
+------------------
+ Timer and Health
+------------------
+
+TIMER BAR
+Value is at AC7E
+//Round starts at 39208 and hits 0 at 36, at least on my PC configuration and framerate.
+//Q: What happens to time during finish him/fatalities?
+
+RawTime = 39208-AC7E
+
+
+//Time remaining, scaled over 100
+TimeElapsed = 100*(RawTime/39172)
+TimeScore = 100 - TimeElapsed
+
+//There could be issues with different PCs //and depending on framerate. Use RawTime. Test with another computer.
+
+
+
+P1 HEALTH BAR
+//If in round, goes from 120 (full) to 0.
+P1_Health == CAB8
+
+P2 HEALTH BAR
+//If in round, goes from 120 (full) to 0.
+P2_Health == CBB8
+
+
+//Health Difference. >0 if P1 has more health than P2, ==0 if equal, <0 if P2 has higher //health.
+DeltaHealth = P1_Health - P2_Health 
+
+
+-----------------------
+ Position and Distance
+-----------------------
+
+//X positions
+P1_X is at CB4A
+P2_X is at CC4A
+
+//X distance. Positive if P2 is to the right of P1, negative if P2 is to the left of P1.
+
+X_Dist = P2_X - P1_X
+
+
+//Note: Leftmost and rightmost X are different in different maps. Implement flags to check if P1 is at the edges:
+
+
+//AtLeftEdge
+
+If (Pressed_Left) AND ((P1_X_New == P1_X_Old) AND X_Dist >= 0), THEN set 
+AtLeftEdge = 1, otherwise it should be 0.
+
+
+
+//AtRightEdge
+
+If (Pressed_Right) AND ((P1_X_New == P1_X_Old) AND X_Dist <= 0), THEN set 
+AtRightEdge = 1, otherwise it should be 0.
+
+
+
+
+//Y positions ----DON'T USE
+P1_Y is at CB4E
+P2_Y is at CC4E
+
+//Y depends on model and map, and doesn't account for crouching. The X Position plus //movement/attack variables should be sufficient and more reliable.
+
+
+//Write a short Lua script that just displays the variables in BizHawk, to test them.
+
+----------------------------
+ Movement/Attack Indicators
+----------------------------
+//These memory locations show distinct codes for each movement and attack (including //combos) for P1 and P2, respectively. CAFE/CBFE do not distinguish between standing //still and jumping straight up, and show left/right movement as 0. The locations for //left/right movement and jumping straight up are CAFA and CBFA.
+
+P1_Moves is at [CAFE, CAFA]
+
+P2_Moves is at [CBFE, CBFA]
+
+
+
+---------
+ Outputs
+---------
+//A list of booleans. Can press any combination, except (Press_Up AND Press_Down) 
+//or (Press_Left AND Press_Right).
+
+
+//Each one == true if button pressed, else false.
+
+Outputs = [Press_Up, Press_Down, Press_Left, Press_Right, Press_A, Press_B, Press_C,
+           Press_X, Press_Y, Press_Z]
+
+//Don't need Press_Start during matches, although it's needed in other screens. 
+//But it shouldn't go in the Outputs list. Don't need the Mode button at all.
+
+
+
+------------------------------------------
+ Flags for Active Round and Part of Round -----Needs attention
+------------------------------------------
+
+ROUND START
+RoundStartFlag => AB30 goes to 0 at start of a round; goes to 1 when round starts ("Fight!") and stays at 1 until next round.
+
+
+//CHECK AB26, AB2A, and AB30 together. Other addresses in the AB''s may have interesting //flags, too. Notation: RoundFlags = [x,y,z] is the list of values at [AB26, AB2A, Ab30]
+
+RoundFlags == [0,0,0] => Round Starting (Before "Fight!")
+RoundFlags == [0,0,1] => Fighting (can also be [0,0,1] during title screens if there has 					been a demo fight. Solution: Program to 					Press_Start whenever RoundFlags isn't [0,0,1] or						[1,0,1]. Won't ever get to a demo fight.)
+RoundFlags == [1,0,1] => "Finish Him" state
+RoundFlags == [1,1,1] => Round Over (stays until start of next round. Stays [1,1,1] 				during "Test Your Strength".) 
+
+//Caveat: Check behavior during Endurance, Goro, and Shang Tsung rounds.
+
+
+
+//Other flags
+
+//DON'T USE. Can determine draw by checking TimeElapsed. Draw => Game Over.
+AB3C => 2 on Draw (Time Over) and Game Over; 1 during story and start screens (but 0 after Reset or Game Over and before first demo fight or real fight); 0 during rounds, demo rounds, and screens between matches; 0 at continue screen; 0 at Game Over (unless there was a draw). 
+
+
+
+GAME OVER/CONTINUE/TOURNAMENTWON
+
+//GameOver behavior: AB3E goes from 0 to 65532 (after Continue screen counts down to 0) //to 65531 (Game Over screen) (holds during screen) then goes 0 on restart and stays that //way. AB3E stays at 0 if you hit start at the Continue screen.
+
+
+
+AB3E Values (checked at end of each round): 
+
+65530: If set manually, displays Continue screen over Game Over screen. 
+
+65531: Displayed over Game Over screen. If set manually, skips Continue and Game Over 	screens and goes directly from end of round back to Character Select screen (GOOD 	FOR ADJUSTING GAME BEHAVIOR FOR THE ALGORITHM (skips useless screens), BUT I WOULD HAVE TO CREATE MY OWN FLAG FOR GAME OVER. i CAN MAKE A ROUND COUNTER AND CHECK IF ROUND WON OR LOST BASED ON HEALTH AND TIME VARIABLES. 
+
+65532: Goes to Game Over screen. 
+
+65533: If set manually, displays Continue screen (normally) after end of round, with Game 	Over Screen displayed after countdown.. 
+
+65534: If set manually, goes to Credits (somewhat buggy). 
+
+65535: Gets set to this if you defeat Shang Tsung in the tournament. If set manually, 	goes to Ending screen for the character who wins the round,followed by Credits. 
+
+
+Continue Screen timer appears to be at B586. == 0 when not in Continue Screen.
+
+//Define my own GameOver flag based on the health and time variables and a round counter
+
+GameOver == true if ( (P2_RoundsWon == 2) OR (Draw) )
+//Check status at end of each round, after updating P1_RoundsWon and 
+//P2_RoundsWon counter.  
+
+
+//Flag for TournamentWon. Same behavior as GameOver (should "kill" that individual, //calculate TotalFitness, go back to Character Select screen, and start another //iteration. TournamentWon should give a HUGE fitness bonus.
+
+Initialize to 0. TournamentWon = true IF(AB3E == 65535) 
+//Alternatively, can define as true IF(MatchesWon == 12)
+//Check status of TournamentWon at end of each round, after updating P1_RoundsWon and 
+//P2_RoundsWon counter and then updating the MatchesWon counter. 
+
+
+
+//Make a MatchesWon counter
+MatchesWon = 0; If (P1_RoundsWon == 2), THEN (MatchesWon++; P1_RoundsWon = 0)
+//Check If condition at end of each round. Update MatchesWon if true.
+
+
+//Behavior: Keep hitting start if not in a round. Should be separate from neural net //functions.
+
+//Behavior at script start and after forced continue: Press_Right-->Press_Start 
+//(to select SubZero--arbitrary choice). Start script from Character Select screen.
+
+
+------------
+ Tournament
+------------
+
+//Use MatchesWon to weigh match fitness more the further in the tournament P1 gets. (I.e., winning a match at level 3 gives a higher fitness than winning a match at level 2, all else being equal.)
+  
+
+//Flag for Endurance mode
+Initialize to 0. EnduranceFight = true IF (MatchesWon == 7 OR 8 OR 9)
+
+//In Endurance mode, P1 fights two opponents per round. When the first opponent's //P2_Health reaches 0, another opponent comes in at full health and the timer restarts.
+//P1_Health does not replenish between the two opponents within the round, but it does //replenish between rounds and matches.
+
+
+//Flag for GoroFight. Goro hits hard and has very different tactics.
+Initialize to 0. GoroFight = true IF (MatchesWon == 10)
+
+//Does P1 go to Goro straight from previous fight? Check RoundFlags. 
+//Is HP restored before Goro?
+
+
+//Flag for ShangTsungFight. ShangTsung can shapeshift into other characters, including //Goro.
+Initialize to 0. ShangTsungFight = true IF (MatchesWon == 11)
+
+
+---------
+ Fitness
+---------
+
+//Fitness for each round, Make it able to deal with unlikely event of a draw.
+//Make sure P1_Win checks for KO wins and time wins. P1_Win should be false in case of a //draw. In fact, a draw in any round leads to GameOver. 
+
+
+RoundFitness = rt_RoundFitness at end of match + g(TimeScore) + hefty WinBonus (+500??) if (P1_Win == true) + smaller FatalityBonus if (P1_Fatality == true). 
+
+//The WinBonus should be the largest element of RoundFitness (by far) if (P1_Win = true).
+
+//g() should be an increasing function of TimeScore if P1_Win == true and
+//g() should be an increasing function of (100-TimeScore == TimeElapsed) 
+//if P1_Win == false
+//This way, P1 gets a time bonus for winning fast but also gets a time bonus for lasting
+//longer in rounds in which P1 loses or draws.
+//
+//I'm thinking of setting g(t) = (t/10)^2. 
+//
+//That way, it's scaled between 0 and 100 (like TimeScore),
+//and it gives a big premium to finishing fast. Likewise, it gives a big boost to lasting
+//longer while the algorithm is at a state where it can't win, because the marginal //fitness rate increases with every extra second P1 lasts.
+
+
+
+//A measure of within-round fitness for use with rtNEAT (Will this work with the //algorithm?)
+
+rt_RoundFitness => f(P1_Health, DeltaHealth) == p(P1_Health) + r(DeltaHealth)  
+
+//f() should be increasing in P1_Health and DeltaHealth.
+//We want P1 to have higher health than P2, and the bigger the difference the better.
+//And DeltaHealth being equal, we prefer it if P1 keeps his health bar high.
+//I want a function with smooth behavior when DeltaHealth switches sign.
+//DeltaHealth can take values from +120 to -120
+
+
+//I'm thinking r(DeltaHealth) = (DeltaHealth/12)^2 If (DeltaHealth >= 0), 
+//		r(DeltaHealth) = -((DeltaHealth/12)^2) If DeltaHealth < 0
+
+
+//That way it's continuous, scaled between -100 and 100, and more positive (negative) the
+// higher |DeltaHealth|
+
+//For p(), I'm thinking p(P1_Health) = ((P1_Health)/12)^2, for similar reasons
+
+
+//If P1 wins, the fitness component from rt_RoundFitness == 2*p(P1_Health) 
+//						== 2*r(DeltaHealth)
+//since p(x) == r(x) if x >= 0 and, at win, P1_Health == DeltaHealth > 0.
+//But during the match, holding one of p(), r() constant, rtRoundFitness is increasing //in the other. 
+
+
+
+
+//Fitness score after a whole match. The sum of RoundFitness scores should be weighted 
+//so that the MatchFitness is higher if P1 wins 2-0 than if P1 wins 2-1.
+
+MatchFitness = (weighted sum of RoundFitness)*h(MatchesWon)
+//h() should be increasing in MatchesWon. I'm thinking 
+//h(MatchesWon) = max(1, 1 + log (MatchesWon))
+
+
+
+//Total fitness at GameOver or TournamentWon.
+TotalFitness = (sum of MatchFitness) + huge bonus if (TournamentWon == 1). 
+
